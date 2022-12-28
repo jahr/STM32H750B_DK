@@ -1,0 +1,88 @@
+/*
+    GNU linker script for STM32H750
+    FLASH_FS (rx)   : ORIGIN = 0x9000FC00, LENGTH = 1024K end of external QSPI used for filesystem
+*/
+
+/* Specify the memory areas */
+MEMORY
+{
+    FLASH (rx)      : ORIGIN = 0x08000000, LENGTH = 128K
+    FLASH_EXT (rx)  : ORIGIN = 0x90000000, LENGTH = 65536K  /* external QSPI */
+    DTCM (xrw)      : ORIGIN = 0x20000000, LENGTH = 128K    /* Used for storage cache */
+    RAM (xrw)       : ORIGIN = 0x24000000, LENGTH = 512K    /* AXI SRAM */    
+    RAM_D2 (xrw)    : ORIGIN = 0x30000000, LENGTH = 288K
+}
+
+/* produce a link error if there is not this amount of RAM for these sections */
+_minimum_stack_size = 2K;
+_minimum_heap_size = 16K;
+
+/* Define the stack.  The stack is full descending so begins just above last byte
+   of RAM.  Note that EABI requires the stack to be 8-byte aligned for a call. */
+_estack = ORIGIN(RAM) + LENGTH(RAM) - _estack_reserve;
+_sstack = _estack - 16K; /* tunable */
+
+/* RAM extents for the garbage collector */
+_ram_start = ORIGIN(RAM);
+_ram_end = ORIGIN(RAM) + LENGTH(RAM);
+_heap_start = _ebss; /* heap starts just after statically allocated memory */
+_heap_end = _sstack;
+
+ENTRY(Reset_Handler)
+
+/* define output sections */
+SECTIONS
+{
+    /* The startup code goes first into FLASH */
+    .isr_vector :
+    {
+        . = ALIGN(4);
+        KEEP(*(.isr_vector)) /* Startup code */
+        . = ALIGN(4);
+    } >FLASH_EXT
+
+    /* The program code and other data goes into FLASH */
+    .text :
+    {
+        . = ALIGN(4);
+        *(.text*)          /* .text* sections (code) */
+        *(.rodata*)        /* .rodata* sections (constants, strings, etc.) */
+    /*  *(.glue_7)   */    /* glue arm to thumb code */
+    /*  *(.glue_7t)  */    /* glue thumb to arm code */
+        . = ALIGN(4);
+        _etext = .;        /* define a global symbol at end of code */
+    } >FLASH_EXT
+
+    /* For C++ exception handling */
+/*
+    .ARM :
+    {
+        __exidx_start = .;
+        *(.ARM.exidx*)
+        __exidx_end = .;
+    } >FLASH
+*/
+
+    /* Used by the start-up code to initialise data */
+    _sidata = LOADADDR(.data);
+
+    /* Initialised data section, start-up code will copy it from flash to RAM */
+    .data :
+    {
+        . = ALIGN(4);
+        _sdata = .;
+        *(.data*)
+        . = ALIGN(4);
+        _edata = .;
+    } >RAM AT> FLASH_EXT
+
+    INCLUDE common_bss_heap_stack.ld
+
+    /* Filesystem cache in RAM, and storage in flash */
+/*
+    _micropy_hw_internal_flash_storage_ram_cache_start = ORIGIN(DTCM);
+    _micropy_hw_internal_flash_storage_ram_cache_end = ORIGIN(DTCM) + LENGTH(DTCM);
+    _micropy_hw_internal_flash_storage_start = ORIGIN(FLASH_FS);
+    _micropy_hw_internal_flash_storage_end = ORIGIN(FLASH_FS) + LENGTH(FLASH_FS);
+*/
+}
